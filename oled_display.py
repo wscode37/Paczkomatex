@@ -1,7 +1,7 @@
 # oled_display.py
 import time
 from PIL import Image, ImageDraw, ImageFont
-from firebase_test import check_package_existence
+from delivery_service import check_package_existence
 import lib.oled.SSD1331 as SSD1331
 import RPi.GPIO as GPIO
 import config
@@ -14,30 +14,30 @@ rotary_encoder = config.RotaryEncoder(config.encoderLeft, config.encoderRight, c
 def update_oled():
     disp.clear()
 
-    font_large = ImageFont.truetype('./lib/oled/Font.ttf', 20)
-    font_small = ImageFont.truetype('./lib/oled/Font.ttf', 13)
+    font_large = ImageFont.truetype('./lib/oled/Font.ttf', 13)
+    font_small = ImageFont.truetype('./lib/oled/Font.ttf', 10)
 
-    image = Image.new("RGB", (disp.width, disp.height), "WHITE")
+    image = Image.new("RGB", (disp.width, disp.height), "BLACK")
     draw = ImageDraw.Draw(image)
 
     draw.text((8, 0), config.options[config.current_option], font=font_large, fill="WHITE")
 
     if config.input_position == 4:
         # Ekran "Potwierdź kod" i "Anuluj"
-        draw.text((8, 40), " ".join(map(str, config.input_code)), font=font_large, fill="WHITE")
-        draw.text((8, 60), "Potwierdź kod", font=font_small, fill="WHITE")
-        draw.text((8, 80), "Anuluj", font=font_small, fill="WHITE")
+        draw.text((8, 10), " ".join(map(str, config.input_code)), font=font_large, fill="WHITE")
+        draw.text((8, 35), "Potwierdź kod", font=font_small, fill="WHITE")
+        draw.text((20, 35), "Anuluj", font=font_small, fill="WHITE")
     else:
         # Ekran wprowadzania kodu
-        draw.text((8, 40), "Podaj 4-cyfrowy kod wysyłki:", font=font_small, fill="WHITE")
-        draw.text((8, 60), " ".join([str(digit) if idx == config.input_position else "_" for idx, digit in enumerate(config.input_code)]), font=font_large, fill="WHITE")
+        draw.text((8, 20), "Podaj 4-cyfrowy kod wysyłki:", font=font_small, fill="WHITE")
+        draw.text((8, 30), " ".join([str(digit) if idx == config.input_position else "_" for idx, digit in enumerate(config.input_code)]), font=font_large, fill="WHITE")
 
     disp.ShowImage(image, 0, 0)
 
 def navigate_options():
     current_option = 0
 
-    while True:
+    while config.depth == 0:
         update_oled()
 
         # Oczekiwanie na obrót enkodera
@@ -53,14 +53,19 @@ def navigate_options():
         if GPIO.input(config.buttonGreen) == GPIO.LOW:
             config.current_option = current_option
 
-            # Po wybraniu opcji, przeniesienie do ekranu "Podaj 4-cyfrowy kod"
-            config.input_position = 0
-            get_user_input()
+            if config.current_option == 0:  # Assuming the first option is "Wyślij paczkę"
+                config.depth = 1
+                get_user_input()
+            elif config.current_option == 1:  # Assuming the second option is "Odbierz paczkę"
+                config.depth = 1
+                get_user_input_for_receiving()
+
+        print("oled updated")
 
 def get_user_input():
     input_code = [0, 0, 0, 0]  # Początkowy kod
 
-    while True:
+    while config.depth == 1:
         update_oled()
 
         # Oczekiwanie na obrót enkodera
@@ -79,20 +84,13 @@ def get_user_input():
 
             if config.input_position == 4:
                 # Po wprowadzeniu wszystkich 4 cyfr, przejście do ekranu "Potwierdź kod" i "Anuluj"
+                config.depth = 2  # Move to the next depth level
                 confirm_code_screen()
                 return
 
 def confirm_code_screen():
-    while True:
+    while config.depth == 2:
         update_oled()
-
-        # Oczekiwanie na obrót enkodera
-        rotated = rotary_encoder.get_direction()
-        if rotated == 1 or rotated == -1:
-            # Obrót enkodera na tym etapie nic nie robi, możesz dodać odpowiednie działanie
-            pass
-
-        time.sleep(0.2)  # Zapobiegaj multipleksowaniu enkodera
 
         # Oczekiwanie na naciśnięcie przycisku
         if GPIO.input(config.buttonGreen) == GPIO.LOW:
@@ -111,14 +109,18 @@ def confirm_code_screen():
             image_path = "ok.jpg"
             text = "Paczka o podanym kodzie została znaleziona"
             display_image_and_text(image_path, text)
+            time.sleep(2)
+            config.depth = 0
 
         elif GPIO.input(config.buttonRed) == GPIO.LOW:
             # Anulowanie wprowadzonego kodu i powrót do poprzedniego ekranu
             image_path = "bad.jpg"
             text = "Nie odnaleziono paczki o podanym kodzie"
             display_image_and_text(image_path, text)
+            time.sleep(2)
+            config.depth = 0
 
-        wait_for_button_press()
+
             # Powrót do głównego ekranu
         config.input_position = 0
         return    
@@ -151,5 +153,6 @@ def wait_for_button_press():
         time.sleep(0.2)
 
 if __name__ == "__main__":
+    disp.Init()
     navigate_options()
     print(f"Wybrana opcja: {config.options[config.current_option]}")
