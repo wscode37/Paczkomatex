@@ -41,12 +41,13 @@ ws2812pin = 8
 options = ["Nadaj paczkę", "Odbierz paczkę"]
 current_option = 0
 
+depth = 0
+
 input_code = [0, 0, 0, 0]
 input_position = 0
 
 
 device_packages = [None, None, None, None, None]
-# ... (inne zmienne konfiguracyjne)
 
 class RotaryEncoder:
     def __init__(self, clk_pin, dt_pin, switch_pin):
